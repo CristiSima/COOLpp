@@ -1,0 +1,417 @@
+########
+# sequence
+# e \n
+####
+<>e
+
+########
+# sequenceSpaced
+# e \n\n
+####
+<>e
+
+########
+# program
+# data
+# textFuncs
+# textMain
+####
+.data
+<>{data}
+
+.text
+<>{textFuncs}
+
+main:
+<>{textMain}
+    li $v0, 10	
+    syscall		#exit
+
+########
+# function_enter
+# name
+# code \n
+# param_count
+####
+<>{name}:
+    addiu   $sp $sp -12
+    sw      $fp 12($sp)
+    sw      $s0 8($sp)
+    sw      $ra 4($sp)
+    addiu   $fp $sp 4
+    move    $s0 $a0
+    <>{code}
+    lw      $fp 12($sp)
+    lw      $s0 8($sp)
+    lw      $ra 4($sp)
+    addiu   $sp $sp 12+<>{param_count}
+    jr      $ra
+
+########
+# gen_init
+# target
+# parent_init_jump
+# self_init_logic \n
+####
+.globl <>{target}_init
+<>{target}_init:
+    addiu   $sp $sp -12
+    sw      $fp 12($sp)
+    sw      $s0 8($sp)
+    sw      $ra 4($sp)
+    addiu   $fp $sp 4
+    move    $s0 $a0
+    <>{parent_init_jump}
+    <>{self_init_logic}
+    move    $a0 $s0
+    lw      $fp 12($sp)
+    lw      $s0 8($sp)
+    lw      $ra 4($sp)
+    addiu   $sp $sp 12
+    jr      $ra
+
+########
+# prototype
+# target
+# tag
+# attr_count
+# attrs \n
+####
+<>{target}_protObj:
+    .word   <>{tag}
+    .word   3+<>{attr_count}
+    .word   <>{target}_dispTab
+<>{attrs}
+
+########
+# int_const
+# val
+####
+Int_const_<>{val}:
+    .word   1
+    .word   4
+    .word   Int_dispTab
+    .word   <>{val}
+
+########
+# bool_const
+# name
+# val
+####
+Bool_const_<>{name}:
+    .word   3
+    .word   4
+    .word   Bool_dispTab
+    .word   <>{val}
+
+########
+# string_const
+# nr
+# val
+# length
+# str_blocks
+####
+String_const_<>{nr}:
+    .word   2
+    .word   3+1+<>{str_blocks}
+    .word   String_dispTab
+    .word   <>{length}
+    .asciiz "<>{val}"
+    .align 2
+
+########
+# explicit_call_dynamic
+# target
+# branch_count
+# filename
+# line_no
+# method_index
+# call_arguments \n
+####
+<>{call_arguments}
+<>{target}
+    bnez $a0 dispatch<>{branch_count}
+    la      $a0 <>{filename}
+    li      $t1 <>{line_no}
+    jal     _dispatch_abort
+dispatch<>{branch_count}:
+    lw      $t1 8($a0)   # dispatch table
+    lw      $t1 <>{method_index}($t1)   # method offset
+    jalr    $t1
+
+########
+# explicit_call_static
+# target
+# branch_count
+# filename
+# line_no
+# method_name
+# call_arguments \n
+####
+<>{call_arguments}
+<>{target}
+    bnez $a0 dispatch<>{branch_count}
+    la      $a0 <>{filename}
+    li      $t1 <>{line_no}
+    jal     _dispatch_abort
+dispatch<>{branch_count}:
+    jalr    <>{method_name}
+
+########
+# implicit_call
+# method_index
+# call_arguments \n
+####
+<>{call_arguments}
+    move    $a0 $s0
+    lw      $t1 8($s0)   # dispatch table
+    lw      $t1 <>{method_index}($t1)   # method offset
+    jalr    $t1
+
+########
+# call_argument
+# arg_code
+####
+<>{arg_code}
+    sw      $a0 0($sp)
+    addiu   $sp $sp -4
+
+########
+# let_entry
+# default_code
+####
+<>{default_code}
+    sw      $a0 0($sp)
+    addiu   $sp $sp -4
+
+########
+# let
+# entry \n
+# body
+# entry_count
+####
+<>{entry}
+<>{body}
+    addiu   $sp $sp <>{entry_count}
+
+########
+# new
+# target
+####
+    la      $a0 <>{target}_protObj
+    jal     Object.copy
+    jal     <>{target}_init
+
+########
+# new_self
+# e
+####
+    # new SELF_TYPE
+    la      $t1 prototypes_table    
+    lw      $t2 0($s0)          # class tag
+    sll     $t2 $t2 2           # *4
+    addu    $t1 $t1 $t2         # class_objTab + 4 * tag == _protObj
+    lw      $a0 0($t1)          # _protObj
+    jal     Object.copy
+
+    la      $t1 inits_table    
+    lw      $t2 0($s0)          # class tag
+    sll     $t2 $t2 2           # *4
+    addu    $t1 $t1 $t2         # inits_table + 4 * tag
+    lw      $t1 0($t1)          # _init
+    jalr    $t1
+
+########
+# if
+# cond
+# is_true
+# is_false
+# branch_count
+####
+<>{cond}
+    lw    $a0 12($a0)          # bool_val = obj[12]
+    bnez $a0 if_true_<>{branch_count}
+    b if_false_<>{branch_count}
+
+if_true_<>{branch_count}:
+<>{is_true}
+    b if_end_<>{branch_count}
+
+if_false_<>{branch_count}:
+<>{is_false}
+
+if_end_<>{branch_count}:
+
+########
+# is_void
+# cond
+####
+<>{cond}
+    seq $a0 $a0, 0
+    sll     $a0 $a0 4           # *4*4 == -16
+    # { Bool_const_false Bool_const_true}[cond!=0]
+    la $t1 Bool_const_false
+    addu    $a0 $a0 $t1
+
+########
+# not
+# cond
+####
+<>{cond}
+    lw $a0 12($a0)
+    seq $a0 $a0, 0
+    sll     $a0 $a0 4           # *4*4 == -16
+    # { Bool_const_false Bool_const_true}[cond!=0]
+    la $t1 Bool_const_false
+    addu    $a0 $a0 $t1
+
+########
+# negate
+# target
+####
+<>{target}
+    jal     Object.copy
+    lw $t1 12($a0)
+    neg $t1 $t1
+    sw $t1 12($a0)
+
+########
+# arithm
+# elem1
+# elem2
+# calc
+####
+<>elem1
+    sw      $a0 0($sp)
+    addiu   $sp $sp -4
+<>elem2
+    jal     Object.copy
+    lw      $t1 4($sp)
+    addiu   $sp $sp 4
+    lw      $t1 12($t1)
+    lw      $t2 12($a0)
+<>calc
+    sw      $t1 12($a0)
+
+########
+# is_equal
+# elem1
+# elem2
+# branch_count
+####
+<>elem1
+    sw      $a0 0($sp)
+    addiu   $sp $sp -4
+<>elem2
+    lw      $t1 4($sp)
+    addiu   $sp $sp 4
+    move    $t2 $a0
+    la      $a0 Bool_const_true
+    beq		$t1 $t2 equals_<>{branch_count}	# if $t1 == $t2 then goto qeuals_<>{branch_count}
+    la      $a1 Bool_const_false
+    jal     equality_test
+equals_<>{branch_count}:
+
+########
+# less_than
+# elem1
+# elem2
+# branch_count
+####
+<>elem1
+    sw      $a0 0($sp)
+    addiu   $sp $sp -4
+<>elem2
+    sw      $a0 0($sp)
+    addiu   $sp $sp -4
+    la      $a0 Bool_protObj
+    jal     Object.copy
+    lw      $t1 8($sp)
+    lw      $t2 4($sp)
+    addiu   $sp $sp 8
+    slt     $t1 $t1 $t2
+    sw      $t1 12($a0)
+
+
+########
+# less_than_equal
+# elem1
+# elem2
+# branch_count
+####
+<>elem1
+    sw      $a0 0($sp)
+    addiu   $sp $sp -4
+<>elem2
+    sw      $a0 0($sp)
+    addiu   $sp $sp -4
+    la      $a0 Bool_protObj
+    jal     Object.copy
+    lw      $t1 8($sp)
+    lw      $t1 12($t1)
+    lw      $t2 4($sp)
+    lw      $t2 12($t2)
+    addiu   $sp $sp 8
+    sle     $t1 $t1 $t2
+    sw      $t1 12($a0)
+
+########
+# while
+# cond
+# body
+# branch_count
+####
+while_<>{branch_count}_check:
+<>cond
+    lw      $a0 12($a0)
+    beqz    $a0 while_<>{branch_count}_end
+<>body
+    b		while_<>{branch_count}_check
+    
+while_<>{branch_count}_end:
+    li		$a0, 0		# $a0 = 0
+    
+########
+# case_branch
+# body
+# target_tag
+# branch_count
+# exit_case_label
+####
+    lw      $a1 0($a0)
+case_branch_<>{branch_count}_loop:
+    blt		$a1, <>target_tag, case_branch_<>{branch_count}_failed	# if $a1 < target_tag then goto _failed
+    
+    beq		$a1, <>target_tag, case_branch_<>{branch_count}_match	# if $a1 == target_tag then goto _match
+    sll     $a1 $a1 2           # *4
+    la      $a1 tag_to_parent_tag_table($a1)
+    b       case_branch_<>{branch_count}_loop
+
+case_branch_<>{branch_count}_match:
+<>body
+    b case_<>{exit_case_label}_match_found
+
+case_branch_<>{branch_count}_failed:
+
+########
+# case
+# body \n
+# target
+# branch_count
+# filename
+# line_no
+####
+<>target
+    bnez    $a0 case_<>{branch_count}_start_check
+    la      $a0 <>filename
+    li      $t1 <>line_no
+    jal     _case_abort2
+case_<>{branch_count}_start_check:
+    sw      $a0 0($sp)
+    addiu   $sp $sp -4
+
+<>body
+
+    jal     _case_abort
+case_<>{branch_count}_match_found:
+    addiu   $sp $sp 4

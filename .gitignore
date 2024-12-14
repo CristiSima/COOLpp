@@ -1,0 +1,11 @@
+*.zip
+__pycache__
+tests
+*.tokens
+*.interp
+cool/parser/*.py
+cool/lexer/*.py
+*.java
+*.jar
+*.s
+.venv
